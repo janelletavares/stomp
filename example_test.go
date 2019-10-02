@@ -11,12 +11,14 @@ import (
 
 func ExampleConn_Send(c *stomp.Conn) error {
 	// send with receipt and an optional header
+	now := time.Now().UTC().UnixNano() / int64(time.Millisecond)
+	expiration := fmt.Sprintf("%d", now + 60 * 1000)
 	err := c.Send(
 		"/queue/test-1",            // destination
 		"text/plain",               // content-type
 		[]byte("Message number 1"), // body
 		stomp.SendOpt.Receipt,
-		stomp.SendOpt.Header("expires", "2049-12-31 23:59:59"))
+		stomp.SendOpt.Header("expires", expiration))
 	if err != nil {
 		return err
 	}
