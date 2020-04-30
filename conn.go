@@ -234,9 +234,9 @@ func readLoop(c *Conn, reader *frame.Reader) {
 			close(c.readCh)
 			return
 		}
-		fmt.Fprintf(os.Stdout, "readLoop: before putting on the read ch %d\n", len(c.readCh))
+		log.Printf("readLoop: before putting on the read ch %d\n", len(c.readCh))
 		c.readCh <- f
-		fmt.Fprintf(os.Stdout, "readLoop: after putting on the read ch\n")
+		log.Printf("readLoop: after putting on the read ch\n")
 	}
 }
 
@@ -265,14 +265,14 @@ func processLoop(c *Conn, writer *frame.Writer) {
 		select {
 		case <-readTimeoutChannel:
 			// read timeout, close the connection
-			fmt.Fprintf(os.Stdout, "processLoop: readTimeout\n")
+			log.Printf("processLoop: readTimeout\n")
 			err := newErrorMessage("read timeout")
 			sendError(channels, err)
 			return
 
 		case <-writeTimeoutChannel:
 			// write timeout, send a heart-beat frame
-			fmt.Fprintf(os.Stdout, "processLoop: writeTimeout\n")
+			log.Printf("processLoop: writeTimeout\n")
 			err := writer.Write(nil)
 			if err != nil {
 				sendError(channels, err)
@@ -282,7 +282,7 @@ func processLoop(c *Conn, writer *frame.Writer) {
 			writeTimeoutChannel = nil
 
 		case f, ok := <-c.readCh:
-			fmt.Fprintf(os.Stdout, "processLoop: readChannel %d\n", len(c.readCh))
+			log.Printf("processLoop: readChannel %d\n", len(c.readCh))
 			// stop the read timer
 			if readTimer != nil {
 				readTimer.Stop()
@@ -340,7 +340,7 @@ func processLoop(c *Conn, writer *frame.Writer) {
 			}
 
 		case req, ok := <-c.writeCh:
-			fmt.Fprintf(os.Stdout, "processLoop: writeChannel %d\n", len(c.writeCh))
+			log.Printf("processLoop: writeChannel %d\n", len(c.writeCh))
 			// stop the write timeout
 			if writeTimer != nil {
 				writeTimer.Stop()
@@ -443,9 +443,9 @@ func (c *Conn) MustDisconnect() error {
 // Any number of options can be specified in opts. See the examples for usage. Options include whether
 // to receive a RECEIPT, should the content-length be suppressed, and sending custom header entries.
 func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*frame.Frame) error) error {
-	fmt.Fprintf(os.Stdout, "Send: waiting for mutex\n")
+	log.Printf("Send: waiting for mutex\n")
 	c.closeMutex.Lock()
-	fmt.Fprintf(os.Stdout, "Send: got mutex\n")
+	log.Printf("Send: got mutex\n")
 	defer c.closeMutex.Unlock()
 	if c.closed {
 		return ErrAlreadyClosed
@@ -485,7 +485,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
-	fmt.Fprintf(os.Stdout, "sendDataToWriteChWithTimout: len write chan %d\n", len(ch))
+	log.Printf("sendDataToWriteChWithTimout: len write chan %d\n", len(ch))
 	if timeout <= 0 {
 		ch <- request
 		return nil
@@ -527,11 +527,11 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 	// Lock our mutex, but don't close it via defer
 	// If the frame requests a receipt then we want to release the lock before
 	// we block on the response, otherwise we can end up deadlocking
-	fmt.Fprintf(os.Stdout, "sendFrame: waiting for Mutex\n")
+	log.Printf("sendFrame: waiting for Mutex\n")
 	c.closeMutex.Lock()
-	fmt.Fprintf(os.Stdout, "sendFrame: got Mutex\n")
+	log.Printf("sendFrame: got Mutex\n")
 	if c.closed {
-	fmt.Fprintf(os.Stdout, "sendFrame: closed\n")
+	log.Printf("sendFrame: closed\n")
 		c.closeMutex.Unlock()
 		c.conn.Close()
 		return ErrClosedUnexpectedly
@@ -544,9 +544,9 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 			C:     make(chan *frame.Frame),
 		}
 
-	fmt.Fprintf(os.Stdout, "sendFrame: 0 before putting request on write channel\n")
+	log.Printf("sendFrame: 0 before putting request on write channel\n")
 		c.writeCh <- request
-	fmt.Fprintf(os.Stdout, "sendFrame: 0 after putting request on write channel\n")
+	log.Printf("sendFrame: 0 after putting request on write channel\n")
 
 		// Now that we've written to the writeCh channel we can release the
 		// close mutex while we wait for our response
@@ -574,9 +574,9 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 	} else {
 		// no receipt required
 		request := writeRequest{Frame: f}
-	fmt.Fprintf(os.Stdout, "sendFrame: 1 before putting request on write channel\n")
+	log.Printf("sendFrame: 1 before putting request on write channel\n")
 		c.writeCh <- request
-	fmt.Fprintf(os.Stdout, "sendFrame: 1 after putting request on write channel\n")
+	log.Printf("sendFrame: 1 after putting request on write channel\n")
 
 		// Unlock the mutex now that we're written to the write channel
 		c.closeMutex.Unlock()
