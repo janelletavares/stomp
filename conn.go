@@ -1,17 +1,17 @@
 package stomp
 
 import (
+	"context"
 	"errors"
 	"io"
-	"fmt"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-stomp/stomp/frame"
+	"github.com/davecgh/go-spew/spew"
 )
 
 // Default time span to add to read/write heart-beat timeouts
@@ -107,7 +107,7 @@ func Connect(conn io.ReadWriteCloser, opts ...func(*Conn) error) (*Conn, error) 
 	c.hbGracePeriodMultiplier = options.HeartBeatGracePeriodMultiplier
 
 	c.readCh = make(chan *frame.Frame, readChannelCapacity)
-	c.writeCh = make(chan writeRequest, writeChannelCapacity)
+	c.writeCh = make(chan writeRequest, writeChannelCapacity) // why not a pointer to writeRequest?
 
 	if options.Host == "" {
 		// host not specified yet, attempt to get from net.Conn if possible
@@ -446,7 +446,10 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	log.Printf("Send: waiting for mutex\n")
 	c.closeMutex.Lock()
 	log.Printf("Send: got mutex\n")
-	defer c.closeMutex.Unlock()
+	defer func() {
+	log.Printf("Send: unlocking mutex\n")
+		c.closeMutex.Unlock()
+	}()
 	if c.closed {
 		return ErrAlreadyClosed
 	}
@@ -463,6 +466,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 			C:     make(chan *frame.Frame),
 		}
 
+	log.Printf("Send: request with channel\n")
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
 			return err
@@ -474,6 +478,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	} else {
 		// no receipt required
 		request := writeRequest{Frame: f}
+	log.Printf("Send: no request channel\n")
 
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
@@ -485,19 +490,37 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
-	log.Printf("sendDataToWriteChWithTimout: len write chan %d\n", len(ch))
+//	wr := writeRequest{Frame: request.Frame}
+//	ch <- &wr
+	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%s", len(ch), cap(ch), spew.Sdump(ch))
+	if request.C != nil {
+	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
+		log.Printf("sendDataToWriteChWithTimout: request frame%s\n", spew.Sdump(request.Frame))
+	}
 	if timeout <= 0 {
+	log.Printf("sendDataToWriteChWithTimout: no timeout\n")
 		ch <- request
 		return nil
 	}
 
-	timer := time.NewTimer(timeout)
+	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
+	defer cancel()
+	sendChan := make(chan *error, 1)
+	go func() {
+	log.Printf("sendDataToWriteChWithTimout: in goroutine\n")
+		ch <- request
+		sendChan <- nil }()
+
 	select {
-	case <-timer.C:
-		return ErrMsgSendTimeout
-	case ch <- request:
-		timer.Stop()
+	case _ = <-sendChan:
 		return nil
+	case <-ctx.Done():
+		log.Printf("sendDataToWriteChWithTimout: unable to put request on write channel\n")
+		return ErrMsgSendTimeout
+//	default:
+//		log.Printf("sendDataToWriteChWithTimout: not good\n")
+//		return ErrNilOption
 	}
 }
 
@@ -551,6 +574,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 		// Now that we've written to the writeCh channel we can release the
 		// close mutex while we wait for our response
 		c.closeMutex.Unlock()
+	log.Printf("sendFrame: unlock\n")
 
 		var response *frame.Frame
 
@@ -580,6 +604,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 
 		// Unlock the mutex now that we're written to the write channel
 		c.closeMutex.Unlock()
+	log.Printf("sendFrame: unlock\n")
 	}
 
 	return nil
