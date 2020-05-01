@@ -490,7 +490,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan *writeRequest, request writeRequest, timeout time.Duration) error {
-	wr := writeRequest{}
+	wr := writeRequest{Frame: request.Frame}
 	ch <- &wr
 	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%s", len(ch), cap(ch), spew.Sdump(ch))
 	if request.C != nil {
