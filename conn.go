@@ -494,6 +494,8 @@ func sendDataToWriteChWithTimeout(ch chan *writeRequest, request writeRequest, t
 	if request.C != nil {
 	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
 	}
+	wr := writeRequest{}
+	ch <- &wr
 	if timeout <= 0 {
 	log.Printf("sendDataToWriteChWithTimout: no timeout\n")
 		ch <- &request
