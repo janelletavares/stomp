@@ -400,7 +400,7 @@ func (c *Conn) Disconnect() error {
 		return nil
 	}
 
-	ch := make(chan *frame.Frame)
+	ch := make(chan *frame.Frame, 1)
 	c.writeCh <- &writeRequest{
 		Frame: frame.New(frame.DISCONNECT, frame.Receipt, allocateId()),
 		C:     ch,
@@ -462,7 +462,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 		// receipt required
 		request := writeRequest{
 			Frame: f,
-			C:     make(chan *frame.Frame),
+			C:     make(chan *frame.Frame, 1),
 		}
 
 	log.Printf("Send: request with channel\n")
@@ -489,7 +489,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan *writeRequest, request writeRequest, timeout time.Duration) error {
-	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%+v", len(ch), cap(ch), ch)
+	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%s", len(ch), cap(ch), spew.Sdump(ch))
 	if request.C != nil {
 	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
 	}
@@ -502,19 +502,21 @@ func sendDataToWriteChWithTimeout(ch chan *writeRequest, request writeRequest, t
 	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
-	var err error
-	sendChan := make(chan error, 1)
+	sendChan := make(chan *error, 1)
 	go func() {
 	log.Printf("sendDataToWriteChWithTimout: in goroutine\n")
 		ch <- &request
 		sendChan <- nil }()
 
 	select {
-	case err = <-sendChan:
-		return err
+	case _ = <-sendChan:
+		return nil
 	case <-ctx.Done():
 		log.Printf("sendDataToWriteChWithTimout: unable to put request on write channel\n")
 		return ErrMsgSendTimeout
+//	default:
+//		log.Printf("sendDataToWriteChWithTimout: not good\n")
+//		return ErrNilOption
 	}
 }
 
@@ -558,7 +560,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 		// receipt required
 		request := writeRequest{
 			Frame: f,
-			C:     make(chan *frame.Frame),
+			C:     make(chan *frame.Frame, 1),
 		}
 
 	log.Printf("sendFrame: 0 before putting request on write channel\n")
@@ -616,7 +618,7 @@ func (c *Conn) Subscribe(destination string, ack AckMode, opts ...func(*frame.Fr
 		return nil, ErrClosedUnexpectedly
 	}
 
-	ch := make(chan *frame.Frame)
+	ch := make(chan *frame.Frame, 1)
 
 	subscribeFrame := frame.New(frame.SUBSCRIBE,
 		frame.Destination, destination,
