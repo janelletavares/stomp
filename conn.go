@@ -105,7 +105,7 @@ func Connect(conn io.ReadWriteCloser, opts ...func(*Conn) error) (*Conn, error) 
 	c.hbGracePeriodMultiplier = options.HeartBeatGracePeriodMultiplier
 
 	c.readCh = make(chan *frame.Frame, readChannelCapacity)
-	c.writeCh = make(chan writeRequest, writeChannelCapacity)
+	c.writeCh = make(chan writeRequest, writeChannelCapacity) // why not a pointer to writeRequest?
 
 	if options.Host == "" {
 		// host not specified yet, attempt to get from net.Conn if possible
@@ -487,7 +487,9 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 
 func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
 	log.Printf("sendDataToWriteChWithTimout: len write chan %d\n", len(ch))
+	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
 	if timeout <= 0 {
+	log.Printf("sendDataToWriteChWithTimout: no timeout\n")
 		ch <- request
 		return nil
 	}
@@ -495,6 +497,7 @@ func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, ti
 	timer := time.NewTimer(timeout)
 	select {
 	case <-timer.C:
+	log.Printf("sendDataToWriteChWithTimout: unable to put request on write channel\n")
 		return ErrMsgSendTimeout
 	case ch <- request:
 		timer.Stop()
