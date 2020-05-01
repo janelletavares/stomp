@@ -471,7 +471,9 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 		if err != nil {
 			return err
 		}
+	log.Printf("Send: before receipt\n")
 		response := <-request.C
+	log.Printf("Send: after receipt\n")
 		if response.Command != frame.RECEIPT {
 			return newError(response)
 		}
