@@ -486,14 +486,17 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
-	log.Printf("sendDataToWriteChWithTimout: len write chan %d\n", len(ch))
+	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n", len(ch), cap(ch))
+	if request.C != nil {
 	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
+	}
 	if timeout <= 0 {
 	log.Printf("sendDataToWriteChWithTimout: no timeout\n")
 		ch <- request
 		return nil
 	}
 
+	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
 	timer := time.NewTimer(timeout)
 	select {
 	case <-timer.C:
