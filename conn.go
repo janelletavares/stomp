@@ -1,7 +1,9 @@
 package stomp
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -496,15 +498,20 @@ func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, ti
 		return nil
 	}
 
-	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
-	timer := time.NewTimer(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var err error
+	sendChan := make(chan error, 1)
+	go func() {
+		ch <- request
+		sendChan <- nil }()
+
 	select {
-	case <-timer.C:
-	log.Printf("sendDataToWriteChWithTimout: unable to put request on write channel\n")
+	case err = <-sendChan:
+		return err
+	case <-ctx.Done():
+		log.Printf("sendDataToWriteChWithTimout: unable to put request on write channel\n")
 		return ErrMsgSendTimeout
-	case ch <- request:
-		timer.Stop()
-		return nil
 	}
 }
 
