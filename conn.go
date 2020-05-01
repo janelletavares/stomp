@@ -487,7 +487,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 }
 
 func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
-	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n", len(ch), cap(ch))
+	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%+v", len(ch), cap(ch), ch)
 	if request.C != nil {
 	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
 	}
@@ -497,11 +497,13 @@ func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, ti
 		return nil
 	}
 
+	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	var err error
 	sendChan := make(chan error, 1)
 	go func() {
+	log.Printf("sendDataToWriteChWithTimout: in goroutine\n")
 		ch <- request
 		sendChan <- nil }()
 
