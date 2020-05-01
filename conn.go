@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-stomp/stomp/frame"
+	"github.com/davecgh/go-spew/spew"
 )
 
 // Default time span to add to read/write heart-beat timeouts
