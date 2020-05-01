@@ -560,7 +560,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 		}
 
 	log.Printf("sendFrame: 0 before putting request on write channel\n")
-		c.writeCh <- request
+		c.writeCh <- &request
 	log.Printf("sendFrame: 0 after putting request on write channel\n")
 
 		// Now that we've written to the writeCh channel we can release the
