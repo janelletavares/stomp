@@ -25,7 +25,7 @@ const DefaultMsgSendTimeout = 10 * time.Second
 type Conn struct {
 	conn                    io.ReadWriteCloser
 	readCh                  chan *frame.Frame
-	writeCh                 chan writeRequest
+	writeCh                 chan *writeRequest
 	version                 Version
 	session                 string
 	server                  string
@@ -106,7 +106,7 @@ func Connect(conn io.ReadWriteCloser, opts ...func(*Conn) error) (*Conn, error) 
 	c.hbGracePeriodMultiplier = options.HeartBeatGracePeriodMultiplier
 
 	c.readCh = make(chan *frame.Frame, readChannelCapacity)
-	c.writeCh = make(chan writeRequest, writeChannelCapacity) // why not a pointer to writeRequest?
+	c.writeCh = make(chan *writeRequest, writeChannelCapacity) // why not a pointer to writeRequest?
 
 	if options.Host == "" {
 		// host not specified yet, attempt to get from net.Conn if possible
@@ -401,7 +401,7 @@ func (c *Conn) Disconnect() error {
 	}
 
 	ch := make(chan *frame.Frame)
-	c.writeCh <- writeRequest{
+	c.writeCh <- &writeRequest{
 		Frame: frame.New(frame.DISCONNECT, frame.Receipt, allocateId()),
 		C:     ch,
 	}
@@ -486,25 +486,25 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	return nil
 }
 
-func sendDataToWriteChWithTimeout(ch chan writeRequest, request writeRequest, timeout time.Duration) error {
+func sendDataToWriteChWithTimeout(ch chan *writeRequest, request writeRequest, timeout time.Duration) error {
 	log.Printf("sendDataToWriteChWithTimout: len write chan %d ;cap %d\n%+v", len(ch), cap(ch), ch)
 	if request.C != nil {
 	log.Printf("sendDataToWriteChWithTimout: len request chan %d\n", len(request.C))
 	}
 	if timeout <= 0 {
 	log.Printf("sendDataToWriteChWithTimout: no timeout\n")
-		ch <- request
+		ch <- &request
 		return nil
 	}
 
 	log.Printf("sendDataToWriteChWithTimout: timeout %+v\n", timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 	var err error
 	sendChan := make(chan error, 1)
 	go func() {
 	log.Printf("sendDataToWriteChWithTimout: in goroutine\n")
-		ch <- request
+		ch <- &request
 		sendChan <- nil }()
 
 	select {
@@ -591,7 +591,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 		// no receipt required
 		request := writeRequest{Frame: f}
 	log.Printf("sendFrame: 1 before putting request on write channel\n")
-		c.writeCh <- request
+		c.writeCh <- &request
 	log.Printf("sendFrame: 1 after putting request on write channel\n")
 
 		// Unlock the mutex now that we're written to the write channel
@@ -656,7 +656,7 @@ func (c *Conn) Subscribe(destination string, ack AckMode, opts ...func(*frame.Fr
 	go sub.readLoop(ch)
 
 	// TODO is this safe? There is no check if writeCh is actually open.
-	c.writeCh <- request
+	c.writeCh <- &request
 	return sub, nil
 }
 
