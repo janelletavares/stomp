@@ -465,6 +465,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 			C:     make(chan *frame.Frame),
 		}
 
+	log.Printf("Send: request with channel\n")
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
 			return err
@@ -476,6 +477,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	} else {
 		// no receipt required
 		request := writeRequest{Frame: f}
+	log.Printf("Send: no request channel\n")
 
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
