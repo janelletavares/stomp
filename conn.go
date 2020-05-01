@@ -446,7 +446,10 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	log.Printf("Send: waiting for mutex\n")
 	c.closeMutex.Lock()
 	log.Printf("Send: got mutex\n")
-	defer c.closeMutex.Unlock()
+	defer func() {
+	log.Printf("Send: unlocking mutex\n")
+		c.closeMutex.Unlock()
+	}()
 	if c.closed {
 		return ErrAlreadyClosed
 	}
@@ -551,6 +554,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 		// Now that we've written to the writeCh channel we can release the
 		// close mutex while we wait for our response
 		c.closeMutex.Unlock()
+	log.Printf("sendFrame: unlock\n")
 
 		var response *frame.Frame
 
@@ -580,6 +584,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 
 		// Unlock the mutex now that we're written to the write channel
 		c.closeMutex.Unlock()
+	log.Printf("sendFrame: unlock\n")
 	}
 
 	return nil
