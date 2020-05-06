@@ -23,6 +23,7 @@ const DefaultMsgSendTimeout = 10 * time.Second
 // the Dial or Connect function.
 type Conn struct {
 	conn                    io.ReadWriteCloser
+	Debug                   bool
 	readCh                  chan *frame.Frame
 	writeCh                 chan writeRequest
 	version                 Version
@@ -199,6 +200,12 @@ func Connect(conn io.ReadWriteCloser, opts ...func(*Conn) error) (*Conn, error) 
 	return c, nil
 }
 
+func (c *Conn) debugLog(msg string, args ...interface{}) {
+	if c.Debug {
+		log.Printf(msg+"\n", args...)
+	}
+}
+
 // Version returns the version of the STOMP protocol that
 // is being used to communicate with the STOMP server. This
 // version is negotiated with the server during the connect sequence.
@@ -232,7 +239,17 @@ func readLoop(c *Conn, reader *frame.Reader) {
 			close(c.readCh)
 			return
 		}
+		if f == nil {
+			c.debugLog("readLoop(): trying to write nil frame to c.readCh")
+		} else {
+			c.debugLog("readLoop(): trying to write frame to c.readCh: %s %s", f.Command, f.Body)
+		}
 		c.readCh <- f
+		if f == nil {
+			c.debugLog("readLoop(): wrote nil frame to c.readCh")
+		} else {
+			c.debugLog("readLoop(): wrote frame to c.readCh: %s %s", f.Command, f.Body)
+		}
 	}
 }
 
@@ -261,12 +278,14 @@ func processLoop(c *Conn, writer *frame.Writer) {
 		select {
 		case <-readTimeoutChannel:
 			// read timeout, close the connection
+			c.debugLog("processLoop: <-readTimeoutChannel timeout")
 			err := newErrorMessage("read timeout")
 			sendError(channels, err)
 			return
 
 		case <-writeTimeoutChannel:
 			// write timeout, send a heart-beat frame
+			c.debugLog("processLoop: <-writeTimeoutChannel timeout")
 			err := writer.Write(nil)
 			if err != nil {
 				sendError(channels, err)
@@ -298,7 +317,9 @@ func processLoop(c *Conn, writer *frame.Writer) {
 			case frame.RECEIPT:
 				if id, ok := f.Header.Contains(frame.ReceiptId); ok {
 					if ch, ok := channels[id]; ok {
+						c.debugLog("processLoop: f, ok := <-c.readCh receipt trying to write to sub=%s body='%s'", id, string(f.Body))
 						ch <- f
+						c.debugLog("processLoop: f, ok := <-c.readCh receipt wrote to sub=%s body='%s'", id, string(f.Body))
 						delete(channels, id)
 						close(ch)
 					}
@@ -325,7 +346,9 @@ func processLoop(c *Conn, writer *frame.Writer) {
 			case frame.MESSAGE:
 				if id, ok := f.Header.Contains(frame.Subscription); ok {
 					if ch, ok := channels[id]; ok {
+						c.debugLog("processLoop: f, ok := <-c.readCh trying to write to sub=%s body='%s'", id, string(f.Body))
 						ch <- f
+						c.debugLog("processLoop: f, ok := <-c.readCh wrote to sub=%s body='%s'", id, string(f.Body))
 					} else {
 						log.Println("ignored MESSAGE for subscription", id)
 					}
@@ -363,7 +386,9 @@ func processLoop(c *Conn, writer *frame.Writer) {
 			}
 
 			// frame to send
+			c.debugLog("processLoop: req, ok := <-c.writeCh writer.Write command=%s body=%s", req.Frame.Command, string(req.Frame.Body))
 			err := writer.Write(req.Frame)
+			c.debugLog("processLoop: req, ok := <-c.writeCh socket wrote command=%s body=%s", req.Frame.Command, string(req.Frame.Body))
 			if err != nil {
 				sendError(channels, err)
 				return
@@ -435,8 +460,13 @@ func (c *Conn) MustDisconnect() error {
 // Any number of options can be specified in opts. See the examples for usage. Options include whether
 // to receive a RECEIPT, should the content-length be suppressed, and sending custom header entries.
 func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*frame.Frame) error) error {
+	c.debugLog("stomp.Conn.Send(): Trying to get lock for: '%s'", string(body))
 	c.closeMutex.Lock()
-	defer c.closeMutex.Unlock()
+	defer func() {
+		c.closeMutex.Unlock()
+		c.debugLog("stomp.Conn.Send(): unlocked for: '%s'", string(body))
+	}()
+
 	if c.closed {
 		return ErrAlreadyClosed
 	}
@@ -453,10 +483,12 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 			C:     make(chan *frame.Frame),
 		}
 
+		c.debugLog("stomp.Conn.Send(): locked+receipt - sendDataToWriteChWithTimeout for: '%s'", string(body))
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
 			return err
 		}
+		c.debugLog("stomp.Conn.Send(): locked+receipt - waiting for receipt: '%s'", string(body))
 		response := <-request.C
 		if response.Command != frame.RECEIPT {
 			return newError(response)
@@ -464,7 +496,7 @@ func (c *Conn) Send(destination, contentType string, body []byte, opts ...func(*
 	} else {
 		// no receipt required
 		request := writeRequest{Frame: f}
-
+		c.debugLog("stomp.Conn.Send(): locked - sendDataToWriteChWithTimeout for: '%s'", string(body))
 		err := sendDataToWriteChWithTimeout(c.writeCh, request, c.msgSendTimeout)
 		if err != nil {
 			return err
@@ -516,6 +548,7 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 	// Lock our mutex, but don't close it via defer
 	// If the frame requests a receipt then we want to release the lock before
 	// we block on the response, otherwise we can end up deadlocking
+	c.debugLog("stomp.Conn.sendFrame() trying to get lock for command=%s body=%s", f.Command, string(f.Body))
 	c.closeMutex.Lock()
 	if c.closed {
 		c.closeMutex.Unlock()
@@ -558,10 +591,12 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 	} else {
 		// no receipt required
 		request := writeRequest{Frame: f}
+		c.debugLog("stomp.Conn.sendFrame(): locked - trying write request command=%s body=%s", f.Command, string(f.Body))
 		c.writeCh <- request
 
 		// Unlock the mutex now that we're written to the write channel
 		c.closeMutex.Unlock()
+		c.debugLog("stomp.Conn.sendFrame(): sent write request, unlocked for command=%s body=%s", f.Command, string(f.Body))
 	}
 
 	return nil
@@ -572,8 +607,14 @@ func (c *Conn) sendFrame(f *frame.Frame) error {
 // will be received by this subscription. A subscription has a channel
 // on which the calling program can receive messages.
 func (c *Conn) Subscribe(destination string, ack AckMode, opts ...func(*frame.Frame) error) (*Subscription, error) {
+
+	c.debugLog("stomp.Conn.Subscribe(): trying to get lock for destination=%s", destination)
 	c.closeMutex.Lock()
-	defer c.closeMutex.Unlock()
+	c.debugLog("stomp.Conn.Subscribe(): got lock for destination=%s", destination)
+	defer func() {
+		c.closeMutex.Unlock()
+		c.debugLog("stomp.Conn.Subscribe(): unlocked destination=%s", destination)
+	}()
 	if c.closed {
 		c.conn.Close()
 		return nil, ErrClosedUnexpectedly

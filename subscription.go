@@ -146,7 +146,9 @@ func (s *Subscription) readLoop(ch chan *frame.Frame) {
 				Header:       f.Header,
 				Body:         f.Body,
 			}
+			s.conn.debugLog("stomp.Subscription.readLoop(): trying to write to s.C: '%s'", f.Body)
 			s.C <- msg
+			s.conn.debugLog("stomp.Subscription.readLoop(): wrote to s.C: '%s'", f.Body)
 		} else if f.Command == frame.ERROR {
 			state := atomic.LoadInt32(&s.state)
 			if state == subStateActive || state == subStateClosing {
